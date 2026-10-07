@@ -1,0 +1,33 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local/generated project data
+results/ai_diagnoses_backup.csv
+results/responsible_ai_log.csv
+results/*.tmp
+
+# Duplicate exported project tree
+NetSage_AI/
+
+# Reports and local artifacts
+reports/*.docx
+*.log
+*.sqlite3
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

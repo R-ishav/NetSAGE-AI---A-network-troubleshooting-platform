@@ -1,0 +1,18 @@
+{
+  "case_id": "001",
+  "root_cause": "Incorrect default gateway configured on PC-01.",
+  "confidence": 0.95,
+  "osi_layer": "Network",
+  "evidence": [
+    "PC-01 has Gateway 192.168.20.1",
+    "R1 G0/0 (the default gateway for the subnet) has IP 192.168.10.1",
+    "Python Rule Checker Findings: [\"Gateway mismatch detected\"]"
+  ],
+  "next_command": "show ip interface brief",
+  "fix_steps": [
+    "Access PC-01's network settings.",
+    "Change the default gateway on PC-01 from 192.168.20.1 to 192.168.10.1.",
+    "Verify connectivity from PC-01 to R1's G0/0 interface by pinging 192.168.10.1."
+  ],
+  "human_review_required": true
+}

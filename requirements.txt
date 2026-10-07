@@ -1,0 +1,5 @@
+groq>=0.9,<1
+pandas>=2,<3
+pydantic>=2,<3
+python-dotenv>=1,<2
+streamlit>=1.57,<2

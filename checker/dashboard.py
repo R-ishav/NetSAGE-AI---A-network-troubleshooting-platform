@@ -1,0 +1,569 @@
+import streamlit as st
+import pandas as pd
+import re
+from pathlib import Path
+import netsage
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+CASES_FILE = BASE_DIR / "data" / "cases.csv"
+EVALUATION_FILE = BASE_DIR / "results" / "evaluation.csv"
+DIAGNOSES_FILE = BASE_DIR / "results" / "ai_diagnoses.csv"
+REVIEW_FILE = BASE_DIR / "results" / "responsible_ai_log.csv"
+
+
+st.set_page_config(
+    page_title="NetSage AI",
+    page_icon="🌐",
+    layout="wide"
+)
+
+
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+cases = pd.read_csv(
+    CASES_FILE,
+    dtype={"case_id": str}
+)
+
+evaluation = pd.read_csv(
+    EVALUATION_FILE,
+    dtype={"case_id": str}
+)
+
+diagnoses = pd.read_csv(
+    DIAGNOSES_FILE,
+    dtype={"case_id": str}
+)
+
+reviews = pd.read_csv(
+    REVIEW_FILE,
+    dtype={"case_id": str}
+)
+
+
+# ---------------------------------------------------------
+# NORMALIZE CASE IDS
+# ---------------------------------------------------------
+
+cases["case_id"] = (
+    cases["case_id"]
+    .astype(str)
+    .str.strip()
+    .str.zfill(3)
+)
+
+evaluation["case_id"] = (
+    evaluation["case_id"]
+    .astype(str)
+    .str.strip()
+    .str.zfill(3)
+)
+
+diagnoses["case_id"] = (
+    diagnoses["case_id"]
+    .astype(str)
+    .str.strip()
+    .str.zfill(3)
+)
+
+reviews["case_id"] = (
+    reviews["case_id"]
+    .astype(str)
+    .str.strip()
+    .str.zfill(3)
+)
+
+
+# ---------------------------------------------------------
+# HEADER
+# ---------------------------------------------------------
+
+st.title("NetSage AI")
+st.caption("AI-Powered Network Troubleshooting")
+
+
+# ---------------------------------------------------------
+# METRICS
+# ---------------------------------------------------------
+
+total_cases = len(evaluation)
+
+agreement = evaluation[
+    evaluation["result"].eq("AGREEMENT")
+].shape[0]
+
+agreement_rate = (
+    agreement / total_cases * 100
+    if total_cases
+    else 0
+)
+
+human_reviews = len(reviews)
+
+rejected = reviews[
+    reviews["decision"].eq("REJECTED")
+].shape[0]
+
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Cases Analyzed",
+    total_cases
+)
+
+col2.metric(
+    "AI Agreement",
+    f"{agreement_rate:.1f}%"
+)
+
+col3.metric(
+    "Human Reviews",
+    human_reviews
+)
+
+col4.metric(
+    "Rejected",
+    rejected
+)
+
+
+# ---------------------------------------------------------
+# CASE ANALYZER
+# ---------------------------------------------------------
+
+st.divider()
+
+st.header("Case Analyzer")
+
+
+case_ids = cases["case_id"].tolist()
+
+selected_case = st.selectbox(
+    "Select a network case",
+    case_ids
+)
+
+
+case = cases[
+    cases["case_id"] == selected_case
+].iloc[0]
+
+
+st.subheader(
+    f"Case {selected_case}"
+)
+
+
+col1, col2 = st.columns(2)
+
+
+with col1:
+
+    st.markdown("**Symptom**")
+    st.write(case["symptom"])
+
+    st.markdown("**Topology**")
+    st.code(case["topology"])
+
+    st.markdown("**Expected Fault**")
+    st.write(case["expected_fault"])
+
+
+with col2:
+
+    st.markdown("**OSI Layer**")
+    st.write(case["osi_layer"])
+
+    st.markdown("**Concept**")
+    st.write(case["concept"])
+
+    st.markdown("**Severity**")
+    st.write(case["severity"])
+
+
+st.markdown("**Network Device Output**")
+
+st.code(
+    case["show_outputs"]
+)
+
+
+# ---------------------------------------------------------
+# SAVED AI DIAGNOSIS
+# ---------------------------------------------------------
+
+saved = diagnoses[
+    diagnoses["case_id"] == selected_case
+]
+
+diagnosis = None
+
+
+if not saved.empty:
+
+    # Use the latest diagnosis if the case
+    # has been analyzed multiple times.
+    diagnosis = saved.iloc[-1]
+
+    st.divider()
+
+    st.subheader("Saved AI Diagnosis")
+
+    st.markdown("**Root Cause**")
+
+    st.write(
+        diagnosis["root_cause"]
+    )
+
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+
+        try:
+
+            confidence = float(
+                diagnosis["confidence"]
+            )
+
+            st.metric(
+                "Confidence",
+                f"{confidence:.0%}"
+            )
+
+        except (ValueError, TypeError):
+
+            st.metric(
+                "Confidence",
+                diagnosis["confidence"]
+            )
+
+
+    with col2:
+
+        st.metric(
+            "OSI Layer",
+            diagnosis["osi_layer"]
+        )
+
+
+    st.markdown("**Evidence**")
+
+
+    for item in str(
+        diagnosis["evidence"]
+    ).split(" | "):
+
+        st.write(
+            f"• {item}"
+        )
+
+
+    st.markdown("**Next Command**")
+
+    st.code(
+        diagnosis["next_command"]
+    )
+
+
+    st.markdown("**Fix Steps**")
+
+
+    for i, step in enumerate(
+        str(
+            diagnosis["fix_steps"]
+        ).split(" | "),
+        1
+    ):
+
+        # Remove numbering generated by the AI
+        # so the dashboard doesn't show 1. 1) Step
+        step = re.sub(
+            r"^\s*\d+\s*[\.\)]\s*",
+            "",
+            step
+        )
+
+        st.write(
+            f"{i}. {step}"
+        )
+
+
+else:
+
+    st.info(
+        "No saved AI diagnosis for this case."
+    )
+
+
+# ---------------------------------------------------------
+# AI ANALYSIS
+# ---------------------------------------------------------
+
+st.divider()
+
+st.subheader("AI Analysis")
+
+
+if st.button(
+    "Run AI Diagnosis",
+    type="primary"
+):
+
+    existing_results = (
+        netsage.load_existing_results()
+    )
+
+    all_results = list(
+        existing_results.values()
+    )
+
+
+    with st.spinner(
+        "Running Python checker and Groq AI..."
+    ):
+
+        result = netsage.analyze_single_case(
+            case,
+            existing_results,
+            all_results,
+            force=True
+        )
+
+
+    if result:
+
+        st.success(
+            "AI diagnosis completed and saved."
+        )
+
+        st.rerun()
+
+
+    else:
+
+        st.error(
+            "AI analysis failed."
+        )
+
+
+# ---------------------------------------------------------
+# HUMAN REVIEW
+# ---------------------------------------------------------
+
+st.divider()
+
+st.subheader("Human Review")
+
+
+decision = st.radio(
+    "Reviewer Decision",
+    [
+        "ACCEPTED",
+        "EDITED",
+        "REJECTED"
+    ],
+    horizontal=True
+)
+
+
+review_comment = st.text_area(
+    "Optional Review Comment",
+    placeholder="Add a comment about your decision..."
+)
+
+
+human_correction = ""
+
+
+if decision == "EDITED":
+
+    human_correction = st.text_area(
+        "Human Correction",
+        placeholder="Describe what should be corrected..."
+    )
+
+
+if st.button(
+    "Save Human Review",
+    type="secondary"
+):
+
+    if diagnosis is None:
+
+        st.warning(
+            "No AI diagnosis exists to review."
+        )
+
+
+    else:
+
+        from datetime import datetime
+        import csv
+
+
+        fieldnames = [
+            "timestamp",
+            "case_id",
+            "ai_root_cause",
+            "ai_confidence",
+            "decision",
+            "human_correction",
+            "reason"
+        ]
+
+
+        row = {
+
+            "timestamp":
+                datetime.now().isoformat(
+                    timespec="seconds"
+                ),
+
+            "case_id":
+                selected_case,
+
+            "ai_root_cause":
+                str(
+                    diagnosis["root_cause"]
+                ),
+
+            "ai_confidence":
+                str(
+                    diagnosis["confidence"]
+                ),
+
+            "decision":
+                decision,
+
+            "human_correction":
+                human_correction,
+
+            "reason":
+                review_comment
+        }
+
+
+        with open(
+            REVIEW_FILE,
+            "a",
+            newline="",
+            encoding="utf-8"
+        ) as f:
+
+            writer = csv.DictWriter(
+                f,
+                fieldnames=fieldnames
+            )
+
+
+            if REVIEW_FILE.stat().st_size == 0:
+
+                writer.writeheader()
+
+
+            writer.writerow(row)
+
+
+        st.success(
+            f"Review saved successfully for Case {selected_case}."
+        )
+
+        st.rerun()
+
+
+# ---------------------------------------------------------
+# HUMAN REVIEW HISTORY
+# ---------------------------------------------------------
+
+st.divider()
+
+st.subheader(
+    "Human Review History"
+)
+
+
+current_reviews = reviews[
+    reviews["case_id"] == selected_case
+]
+
+
+if current_reviews.empty:
+
+    st.info(
+        "No human reviews recorded for this case."
+    )
+
+
+else:
+
+    for index, review in current_reviews.iloc[::-1].iterrows():
+
+        with st.expander(
+            f"{review['decision']} — {review['timestamp']}"
+        ):
+
+            st.markdown("**Decision**")
+
+            st.write(
+                review["decision"]
+            )
+
+
+            if str(
+                review["human_correction"]
+            ).strip():
+
+                st.markdown(
+                    "**Human Correction**"
+                )
+
+                st.write(
+                    review["human_correction"]
+                )
+
+
+            if str(
+                review["reason"]
+            ).strip():
+
+                st.markdown(
+                    "**Review Comment**"
+                )
+
+                st.write(
+                    review["reason"]
+                )
+
+
+            st.markdown("---")
+
+
+            if st.button(
+                "Delete this review",
+                key=f"delete_review_{index}"
+            ):
+
+                reviews = reviews.drop(
+                    index
+                )
+
+
+                reviews.to_csv(
+                    REVIEW_FILE,
+                    index=False,
+                    encoding="utf-8"
+                )
+
+
+                st.success(
+                    "Review deleted."
+                )
+
+                st.rerun()
